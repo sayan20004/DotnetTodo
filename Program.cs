@@ -6,11 +6,15 @@ using TodoDotNet.Services.Implementations;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
-builder.Services.AddSwaggerGen();
-builder.Services.AddControllers();
-builder.Services.AddScoped<ITodoService, TodoService>();
+// -------------------- Services --------------------
 
+builder.Services.AddControllers();
+
+// Swagger (NET 8 compatible)
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
@@ -26,7 +30,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-
+// MongoDB config
 builder.Services.Configure<MongoDbSettings>(
     builder.Configuration.GetSection("MongoDbSettings"));
 
@@ -43,10 +47,21 @@ builder.Services.AddSingleton<IMongoDatabase>(sp =>
     return client.GetDatabase(settings.DatabaseName);
 });
 
+// App services
+builder.Services.AddScoped<ITodoService, TodoService>();
+
 var app = builder.Build();
-app.UseHttpsRedirection();
-app.UseCors("FrontendPolicy");
-app.Urls.Add($"http://*:{Environment.GetEnvironmentVariable("PORT") ?? "5000"}");
+
+// -------------------- Middleware --------------------
+
+// IMPORTANT: listen on Render port
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+{
+    app.Urls.Add($"http://*:{port}");
+}
+
+// Global exception handler
 app.UseExceptionHandler(errorApp =>
 {
     errorApp.Run(async context =>
@@ -54,55 +69,22 @@ app.UseExceptionHandler(errorApp =>
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json";
 
-        var response = new
+        await context.Response.WriteAsJsonAsync(new
         {
             message = "An unexpected error occurred."
-        };
-
-        await context.Response.WriteAsJsonAsync(response);
+        });
     });
 });
 
+// Swagger (enable in Production for Render)
+app.UseSwagger();
+app.UseSwaggerUI();
+
+// HTTPS + CORS
+app.UseHttpsRedirection();
+app.UseCors("FrontendPolicy");
+
+// Controllers
 app.MapControllers();
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-
-app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
-
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
-
-
-// cCXudmCRh22MWLUh
