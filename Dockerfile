@@ -1,15 +1,12 @@
-# Use ASP.NET runtime
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
-WORKDIR /app
-
-# Copy everything
+# ---------- Build stage ----------
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
 COPY . .
+RUN dotnet publish -c Release -o /app/publish
 
-# Build & publish
-RUN dotnet publish -c Release -o out
-
-# Render uses port 8080 internally
+# ---------- Runtime stage ----------
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
 EXPOSE 8080
-
-# Start app
-CMD ["dotnet", "out/TodoDotNet.dll"]
+CMD ["dotnet", "TodoDotNet.dll"]
